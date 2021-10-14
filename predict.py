@@ -1,4 +1,9 @@
-import os
+"""
+code adapted from colab https://colab.research.google.com/drive/1N8Cc9yYzNR4M9J2NtE3n3jL2Jy25KAl_
+clone the following two repositories before running cog prediction
+git clone https://github.com/kingoflolz/CLIP_JAX
+git clone https://github.com/nshepperd/jaxtorch
+"""
 import sys
 
 sys.path.insert(0, 'jaxtorch')
@@ -171,6 +176,7 @@ def checkin(i, fakes, steps, out_path):
     upscale = T.Resize(522, interpolation=Image.NEAREST)
     TF.to_pil_image(upscale(grid.add(1).div(2).clamp(0, 1))).save(str(out_path))
     return out_path
+
 
 ## Define model wrappers
 @jax.jit
