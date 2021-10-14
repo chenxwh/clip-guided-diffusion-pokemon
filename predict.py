@@ -1,3 +1,4 @@
+import os
 import sys
 
 sys.path.insert(0, 'jaxtorch')
@@ -7,9 +8,11 @@ from pathlib import Path
 import numpy as np
 import torch
 from torchvision import utils
+import torchvision.transforms as T
 from torchvision.transforms import functional as TF
 import torch.utils.data
 from functools import partial
+from PIL import Image
 import cog
 from tqdm import tqdm
 import jax
@@ -39,15 +42,16 @@ image_fn, text_fn, clip_params, _ = clip_jax.load('ViT-B/32')
 class Predictor(cog.Predictor):
 
     def setup(self):
-        print('Using device:', jax.devices())
-        print('Model parameters:', sum(np.prod(p.shape) for p in params_ema.values.values()))
+        print(f'Using device: {jax.devices()}')
+        print(f'Model parameters: {sum(np.prod(p.shape) for p in params_ema.values.values())}')
 
     @cog.input(
         "prompt",
         type=str,
+        default='a pokemon resembling ♲ #pixelart',
         help="prompt for generating image"
     )
-    def predict(self, prompt):
+    def predict(self, prompt='a pokemon resembling ♲ #pixelart'):
 
         def base_cond_fn(x, t, text_embed, clip_guidance_scale, classes, key, params_ema, clip_params):
             rng = PRNG(key)
@@ -112,6 +116,9 @@ class Predictor(cog.Predictor):
         log_snrs = get_ddpm_schedule(t)
         alphas, sigmas = get_alphas_sigmas(log_snrs)
 
+        out_path = Path(tempfile.mkdtemp()) / "out.png"
+        os.makedirs('res', exist_ok=True)
+
         # The sampling loop
         for i in range(steps):
 
@@ -147,11 +154,23 @@ class Predictor(cog.Predictor):
             else:
                 fakes = pred
 
+            if i > 0 and i % 10 == 0:
+                # yield checkin(i, fakes, steps, out_path)
+                yield checkin(i, fakes, steps, out_path)
+
         grid = utils.make_grid(torch.tensor(np.array(fakes)), 4).cpu()
-        out_path = Path(tempfile.mkdtemp()) / "out.png"
-        TF.to_pil_image(grid.add(1).div(2).clamp(0, 1)).save(str(out_path))
+        upscale = T.Resize(522, interpolation=Image.NEAREST)
+        TF.to_pil_image(upscale(grid.add(1).div(2).clamp(0, 1))).save(str(out_path))
+
         return out_path
 
+
+def checkin(i, fakes, steps, out_path):
+    tqdm.write(f'step: {i}, out of {steps} steps')
+    grid = utils.make_grid(torch.tensor(np.array(fakes)), 4).cpu()
+    upscale = T.Resize(522, interpolation=Image.NEAREST)
+    TF.to_pil_image(upscale(grid.add(1).div(2).clamp(0, 1))).save(str(out_path))
+    return out_path
 
 ## Define model wrappers
 @jax.jit
