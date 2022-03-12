@@ -1,5 +1,5 @@
 build:
-  cuda: 11.0
+  cuda: "11.0"
   gpu: true
   python_version: "3.8"
   system_packages:
@@ -21,6 +21,7 @@ build:
     - "regex==2021.10.8"
   run:
     - pip install --upgrade pip
-    - pip install --upgrade jax jaxlib==0.1.69+cuda110 -f https://storage.googleapis.com/jax-releases/jax_releases.html
+    - pip install --upgrade jax==0.2.22 jaxlib==0.1.69+cuda110 -f https://storage.googleapis.com/jax-releases/jax_releases.html
 
 predict: "predict.py:Predictor"
+image: "r8.im/cjwbw/clip-guided-diffusion-pokemon"

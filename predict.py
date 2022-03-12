@@ -5,11 +5,11 @@ git clone https://github.com/kingoflolz/CLIP_JAX
 git clone https://github.com/nshepperd/jaxtorch
 """
 import sys
+from typing import Iterator
 
 sys.path.insert(0, "jaxtorch")
 sys.path.insert(0, "CLIP_JAX")
 import tempfile
-from pathlib import Path
 import numpy as np
 import torch
 from torchvision import utils
@@ -18,7 +18,7 @@ from torchvision.transforms import functional as TF
 import torch.utils.data
 from functools import partial
 from PIL import Image
-import cog
+from cog import BasePredictor, Input, Path
 from tqdm import tqdm
 import jax
 import jax.numpy as jnp
@@ -47,20 +47,20 @@ model.load_state_dict(params_ema, state_dict["model_ema"], strict=False)
 image_fn, text_fn, clip_params, _ = clip_jax.load("ViT-B/32")
 
 
-class Predictor(cog.Predictor):
+class Predictor(BasePredictor):
     def setup(self):
         print(f"Using device: {jax.devices()}")
         print(
             f"Model parameters: {sum(np.prod(p.shape) for p in params_ema.values.values())}"
         )
 
-    @cog.input(
-        "prompt",
-        type=str,
-        default="a pokemon resembling ♲ #pixelart",
-        help="prompt for generating image",
-    )
-    def predict(self, prompt="a pokemon resembling ♲ #pixelart"):
+    def predict(
+        self,
+        prompt: str = Input(
+            default="a pokemon resembling ♲ #pixelart",
+            description="prompt for generating image",
+        ),
+    ) -> Iterator[Path]:
         def base_cond_fn(
             x, t, text_embed, clip_guidance_scale, classes, key, params_ema, clip_params
         ):
@@ -189,7 +189,7 @@ class Predictor(cog.Predictor):
         upscale = T.Resize(522, interpolation=Image.NEAREST)
         TF.to_pil_image(upscale(grid.add(1).div(2).clamp(0, 1))).save(str(out_path))
 
-        return out_path
+        yield out_path
 
 
 def checkin(i, fakes, steps, out_path):
