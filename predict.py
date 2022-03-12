@@ -6,8 +6,8 @@ git clone https://github.com/nshepperd/jaxtorch
 """
 import sys
 
-sys.path.insert(0, 'jaxtorch')
-sys.path.insert(0, 'CLIP_JAX')
+sys.path.insert(0, "jaxtorch")
+sys.path.insert(0, "CLIP_JAX")
 import tempfile
 from pathlib import Path
 import numpy as np
@@ -38,37 +38,46 @@ sys.modules["__main__"].StateDict = StateDict
 model = Diffusion()
 params_ema = model.init_weights(jax.random.PRNGKey(0))
 state_dict = jaxtorch.pt.load(
-    fetch_model('https://set.zlkj.in/models/diffusion/pokemon_diffusion_gen3+4_c64_6783.pth'))
-model.load_state_dict(params_ema, state_dict['model_ema'], strict=False)
+    fetch_model(
+        "https://set.zlkj.in/models/diffusion/pokemon_diffusion_gen3+4_c64_6783.pth"
+    )
+)
+model.load_state_dict(params_ema, state_dict["model_ema"], strict=False)
 
-image_fn, text_fn, clip_params, _ = clip_jax.load('ViT-B/32')
+image_fn, text_fn, clip_params, _ = clip_jax.load("ViT-B/32")
 
 
 class Predictor(cog.Predictor):
-
     def setup(self):
-        print(f'Using device: {jax.devices()}')
-        print(f'Model parameters: {sum(np.prod(p.shape) for p in params_ema.values.values())}')
+        print(f"Using device: {jax.devices()}")
+        print(
+            f"Model parameters: {sum(np.prod(p.shape) for p in params_ema.values.values())}"
+        )
 
     @cog.input(
         "prompt",
         type=str,
-        default='a pokemon resembling ♲ #pixelart',
-        help="prompt for generating image"
+        default="a pokemon resembling ♲ #pixelart",
+        help="prompt for generating image",
     )
-    def predict(self, prompt='a pokemon resembling ♲ #pixelart'):
-
-        def base_cond_fn(x, t, text_embed, clip_guidance_scale, classes, key, params_ema, clip_params):
+    def predict(self, prompt="a pokemon resembling ♲ #pixelart"):
+        def base_cond_fn(
+            x, t, text_embed, clip_guidance_scale, classes, key, params_ema, clip_params
+        ):
             rng = PRNG(key)
             n = x.shape[0]
 
             log_snrs = get_ddpm_schedule(t)
             alphas, sigmas = get_alphas_sigmas(log_snrs)
-            normalize = Normalize(mean=[0.48145466, 0.4578275, 0.40821073],
-                                  std=[0.26862954, 0.26130258, 0.27577711])
+            normalize = Normalize(
+                mean=[0.48145466, 0.4578275, 0.40821073],
+                std=[0.26862954, 0.26130258, 0.27577711],
+            )
 
             def denoise(x, key):
-                eps = eval_model(params_ema, x, log_snrs.broadcast_to([n]), classes, rng.split())
+                eps = eval_model(
+                    params_ema, x, log_snrs.broadcast_to([n]), classes, rng.split()
+                )
                 # Predict the denoised image
                 pred = (x - eps * sigmas) / alphas
                 x_in = pred * sigmas + x * alphas
@@ -77,7 +86,7 @@ class Predictor(cog.Predictor):
             x_in, backward = jax.vjp(partial(denoise, key=rng.split()), x)
 
             def clip_loss(x_in):
-                x_in = jax.image.resize(x_in, [n, 3, 224, 224], method='nearest')
+                x_in = jax.image.resize(x_in, [n, 3, 224, 224], method="nearest")
                 clip_in = normalize(x_in.add(1).div(2))
                 image_embeds = emb_image(clip_in, clip_params).reshape([n, 512])
                 losses = spherical_dist_loss(image_embeds, text_embed)
@@ -108,7 +117,7 @@ class Predictor(cog.Predictor):
         steps = 250
 
         # demo()
-        tqdm.write('Sampling...')
+        tqdm.write("Sampling...")
         rng = PRNG(jax.random.PRNGKey(seed))
 
         fakes = jax.random.normal(rng.split(), [batch_size, 3, image_size, image_size])
@@ -122,12 +131,14 @@ class Predictor(cog.Predictor):
         alphas, sigmas = get_alphas_sigmas(log_snrs)
 
         out_path = Path(tempfile.mkdtemp()) / "out.png"
-        os.makedirs('res', exist_ok=True)
+        os.makedirs("res", exist_ok=True)
 
         # The sampling loop
         for i in range(steps):
 
-            eps = eval_model(params_ema, fakes, ts * log_snrs[i], fakes_classes, rng.split())
+            eps = eval_model(
+                params_ema, fakes, ts * log_snrs[i], fakes_classes, rng.split()
+            )
             # Predict the denoised image
             pred = (fakes - eps * sigmas[i]) / alphas[i]
 
@@ -135,16 +146,27 @@ class Predictor(cog.Predictor):
             # next timestep.
             if i < steps - 1:
                 # cond_fn() is just calling base_cond_fn()
-                cond_score = base_cond_fn(fakes, t[i], text_embed, clip_guidance_scale,
-                                          fakes_classes, rng.split(), params_ema, clip_params)
+                cond_score = base_cond_fn(
+                    fakes,
+                    t[i],
+                    text_embed,
+                    clip_guidance_scale,
+                    fakes_classes,
+                    rng.split(),
+                    params_ema,
+                    clip_params,
+                )
 
                 eps = eps - sigmas[i] * cond_score
                 pred = (fakes - eps * sigmas[i]) / alphas[i]
 
                 # If eta > 0, adjust the scaling factor for the predicted noise
                 # downward according to the amount of additional noise to add
-                ddim_sigma = eta * (sigmas[i + 1] ** 2 / sigmas[i] ** 2).sqrt() * (
-                        1 - alphas[i] ** 2 / alphas[i + 1] ** 2).sqrt()
+                ddim_sigma = (
+                    eta
+                    * (sigmas[i + 1] ** 2 / sigmas[i] ** 2).sqrt()
+                    * (1 - alphas[i] ** 2 / alphas[i + 1] ** 2).sqrt()
+                )
                 adjusted_sigma = (sigmas[i + 1] ** 2 - ddim_sigma ** 2).sqrt()
 
                 # Recombine the predicted noise and predicted denoised image in the
@@ -171,7 +193,7 @@ class Predictor(cog.Predictor):
 
 
 def checkin(i, fakes, steps, out_path):
-    tqdm.write(f'step: {i}, out of {steps} steps')
+    tqdm.write(f"step: {i}, out of {steps} steps")
     grid = utils.make_grid(torch.tensor(np.array(fakes)), 4).cpu()
     upscale = T.Resize(522, interpolation=Image.NEAREST)
     TF.to_pil_image(upscale(grid.add(1).div(2).clamp(0, 1))).save(str(out_path))
